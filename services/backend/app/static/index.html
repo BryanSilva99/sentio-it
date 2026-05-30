@@ -1,0 +1,63 @@
+<!doctype html>
+<html lang="es">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>Sentio-IT</title>
+    <link rel="stylesheet" href="/static/styles.css" />
+  </head>
+  <body>
+    <header class="topbar">
+      <div>
+        <h1>Sentio-IT</h1>
+        <p>Estacion ESP32 de monitoreo de calidad del aire en Ate</p>
+      </div>
+      <div id="status" class="status">Conectando</div>
+    </header>
+
+    <main>
+      <section class="metrics">
+        <article>
+          <span>Estado del nodo</span>
+          <strong id="nodeState">-</strong>
+        </article>
+        <article>
+          <span>Muestras ESP32</span>
+          <strong id="samples">0</strong>
+        </article>
+        <article>
+          <span>PM2.5 promedio</span>
+          <strong id="avgPm25">-</strong>
+        </article>
+      </section>
+
+      <section class="content">
+        <div class="panel current-panel">
+          <h2>Lectura actual</h2>
+          <div id="currentReading" class="current-reading empty-state">Esperando datos del ESP32</div>
+        </div>
+
+        <div class="panel">
+          <h2>Historial reciente</h2>
+          <table>
+            <thead>
+              <tr>
+                <th>Hora</th>
+                <th>PM2.5</th>
+                <th>PM10</th>
+                <th>CO</th>
+                <th>NO2</th>
+                <th>Temp.</th>
+                <th>Hum.</th>
+                <th>Estado</th>
+              </tr>
+            </thead>
+            <tbody id="readings"></tbody>
+          </table>
+        </div>
+      </section>
+    </main>
+
+    <script src="/static/app.js"></script>
+  </body>
+</html>

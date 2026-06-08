@@ -1,6 +1,6 @@
 # Sentio-IT
 
-Dashboard local para recibir telemetria de calidad del aire desde un ESP32 por MQTT.
+Dashboard para recibir telemetria real de calidad del aire desde un ESP32 por MQTT.
 
 El alcance actual del proyecto esta enfocado en una estacion real:
 
@@ -8,69 +8,93 @@ El alcance actual del proyecto esta enfocado en una estacion real:
 sentio-lima-esp32-001
 ```
 
-## Arquitectura
+## Arquitectura de servidor
 
 ```text
-ESP32 -> MQTT :1883 -> Python backend -> SQLite -> Dashboard/API :8000
+ESP32 -> Mosquitto MQTT :1883 -> FastAPI backend -> InfluxDB -> Dashboard/API :8000
 ```
 
 Componentes principales:
 
-- `real_mqtt_backend.py`: backend principal. Levanta un listener MQTT en `1883`, guarda lecturas en SQLite y sirve el dashboard/API en `8000`.
-- `services/backend/app/static/`: HTML, CSS y JavaScript del dashboard.
-- `test_mqtt_publish.py`: publicador MQTT local para probar sin placa.
-- `local_mvp.py`: modo demo con datos simulados internos.
-- `docker-compose.yml`: alternativa Docker con Mosquitto, InfluxDB, backend y simulador.
+- `docker-compose.yml`: levanta Mosquitto, InfluxDB y el backend.
+- `services/backend/`: API, listener MQTT, almacenamiento y dashboard.
+- `mosquitto/config/mosquitto.conf`: broker MQTT con autenticacion obligatoria.
+- `real_mqtt_backend.py`: backend standalone para uso local sin Docker. Para servidor se recomienda Docker.
+
+El proyecto ya no incluye simuladores ni publicadores de datos de prueba en la ruta de despliegue.
 
 ## Requisitos
 
-Modo recomendado sin Docker:
+- Servidor Linux con Docker Engine y Docker Compose.
+- Puerto `1883/tcp` accesible desde el ESP32.
+- Puerto `8000/tcp` accesible para el dashboard o para Nginx.
+- Red y firewall configurados para que la placa pueda llegar al servidor.
 
-- Linux, macOS o Windows con Python.
-- Python 3.10 o superior.
-- Red local donde el ESP32 pueda alcanzar la maquina que ejecuta el backend.
+## Configuracion
 
-No se requieren dependencias externas para `real_mqtt_backend.py`.
+Crea el archivo `.env` desde la plantilla:
 
-## Ejecutar el backend real
+```bash
+cp .env.example .env
+```
+
+Edita `.env` y reemplaza todos los valores `change-this-*` por secretos reales. Usa una clave MQTT que tambien colocaras en el firmware del ESP32.
+
+Variables requeridas:
+
+```text
+MQTT_USERNAME
+MQTT_PASSWORD
+INFLUX_USERNAME
+INFLUX_PASSWORD
+INFLUX_ORG
+INFLUX_BUCKET
+INFLUX_TOKEN
+```
+
+## Ejecutar en servidor
 
 Desde la raiz del proyecto:
 
 ```bash
-python real_mqtt_backend.py
+docker compose up -d --build
 ```
 
-Salida esperada:
+Ver logs:
 
-```text
-MQTT escuchando en 0.0.0.0:1883
-Dashboard/API disponible en http://localhost:8000
+```bash
+docker compose logs -f backend mosquitto
 ```
 
 Abrir el dashboard:
 
 ```text
-http://localhost:8000
+http://IP_DEL_SERVIDOR:8000
 ```
 
-Si accedes desde otra maquina de la red:
+API:
 
 ```text
-http://IP_DEL_SERVIDOR:8000
+GET /api/health
+GET /api/latest
+GET /api/readings?limit=100
+GET /api/summary
 ```
 
 ## Configuracion del ESP32
 
-El ESP32 debe conectarse al broker MQTT usando la IP de la maquina donde corre el backend.
+El ESP32 debe conectarse al broker MQTT usando la IP o dominio del servidor, el usuario y la clave definidos en `.env`.
 
 Ejemplo:
 
 ```cpp
-const char* WIFI_SSID = "BRYAN_2.4G";
-const char* WIFI_PASSWORD = "";
+const char* WIFI_SSID = "TU_WIFI";
+const char* WIFI_PASSWORD = "TU_CLAVE_WIFI";
 
-const char* MQTT_HOST = "192.168.18.2";
+const char* MQTT_HOST = "IP_DEL_SERVIDOR";
 const int MQTT_PORT = 1883;
+const char* MQTT_USERNAME = "sentio_device";
+const char* MQTT_PASSWORD = "CLAVE_REAL_MQTT";
 const char* DEVICE_ID = "sentio-lima-esp32-001";
 ```
 
@@ -102,8 +126,6 @@ Payload esperado:
 
 ## Firewall
 
-Si el ESP32 conecta a WiFi pero MQTT falla con `rc=-2`, normalmente no puede abrir TCP contra el broker.
-
 En Ubuntu con `ufw`, permitir MQTT desde la LAN:
 
 ```bash
@@ -118,81 +140,13 @@ sudo ufw allow from 192.168.18.0/24 to any port 8000 proto tcp
 sudo ufw reload
 ```
 
-Ajusta `192.168.18.0/24` si tu red usa otro rango.
+Ajusta `192.168.18.0/24` si tu red usa otro rango. Si expones el dashboard a internet, coloca Nginx o un proxy equivalente con HTTPS delante del backend.
 
-## Probar sin ESP32
+## Datos
 
-Con el backend corriendo:
+InfluxDB guarda las lecturas en el volumen Docker `influxdb_data`. No borres ese volumen si quieres conservar el historico.
 
-```bash
-python test_mqtt_publish.py
-curl http://localhost:8000/api/latest
-```
-
-El dashboard deberia mostrar la lectura de prueba, aunque la UI esta filtrada para la placa real `sentio-lima-esp32-001`.
-
-## API
-
-Endpoints disponibles:
-
-```text
-GET /api/health
-GET /api/latest
-GET /api/readings?limit=100
-GET /api/summary
-```
-
-Ejemplos:
-
-```bash
-curl http://localhost:8000/api/health
-curl http://localhost:8000/api/latest
-```
-
-## Ejecutar como demo local
-
-Si no tienes placa ni MQTT, puedes levantar datos simulados internos:
-
-```bash
-python local_mvp.py
-```
-
-Abrir:
-
-```text
-http://localhost:8000
-```
-
-## Ejecutar con Docker
-
-Alternativa para levantar Mosquitto, InfluxDB, backend y simulador:
-
-```bash
-docker compose up --build
-```
-
-Servicios:
-
-- Dashboard/API: `http://localhost:8000`
-- MQTT: `localhost:1883`
-- InfluxDB: `http://localhost:8086`
-
-Para el alcance actual de un solo ESP32, el modo sin Docker con `real_mqtt_backend.py` es suficiente.
-
-## Despliegue recomendado
-
-Para una laptop vieja con Ubuntu Server o una VPS pequena:
-
-- CPU: 1 core minimo, 2 cores recomendado.
-- RAM: 512 MB minimo, 1-2 GB recomendado.
-- Disco: 5 GB minimo, 10-20 GB recomendado.
-- Python 3.10+.
-
-Recomendacion practica:
-
-1. Ejecutar `real_mqtt_backend.py` como servicio `systemd`.
-2. Exponer el dashboard con Nginx en `80/443`.
-3. Mantener MQTT `1883` solo abierto para la LAN o protegerlo antes de exponerlo a internet.
+El servicio InfluxDB no publica el puerto `8086` hacia el exterior por defecto; solo el backend accede a el dentro de la red Docker.
 
 ## Permisos Arduino Nano ESP32
 
@@ -203,13 +157,3 @@ sudo ./fix_arduino_permissions.sh
 ```
 
 Luego desconectar y volver a conectar la placa.
-
-## Datos locales
-
-Las lecturas se guardan en:
-
-```text
-sentio_mvp.sqlite3
-```
-
-Ese archivo esta ignorado por Git para no subir datos generados.

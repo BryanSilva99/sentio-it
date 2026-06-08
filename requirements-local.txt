@@ -1,3 +1,0 @@
-# El modo local no requiere dependencias externas.
-# Ejecutar directamente:
-# python local_mvp.py

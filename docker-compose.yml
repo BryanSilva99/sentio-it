@@ -1,8 +1,15 @@
 services:
   mosquitto:
     image: eclipse-mosquitto:2
+    restart: unless-stopped
+    command: >
+      sh -c 'mosquitto_passwd -b -c /tmp/password_file "$$MQTT_USERNAME" "$$MQTT_PASSWORD"
+      && mosquitto -c /mosquitto/config/mosquitto.conf'
     ports:
       - "1883:1883"
+    environment:
+      MQTT_USERNAME: ${MQTT_USERNAME:?set MQTT_USERNAME in .env}
+      MQTT_PASSWORD: ${MQTT_PASSWORD:?set MQTT_PASSWORD in .env}
     volumes:
       - ./mosquitto/config:/mosquitto/config:ro
       - mosquitto_data:/mosquitto/data
@@ -10,46 +17,37 @@ services:
 
   influxdb:
     image: influxdb:2.7
-    ports:
-      - "8086:8086"
+    restart: unless-stopped
     environment:
       DOCKER_INFLUXDB_INIT_MODE: setup
-      DOCKER_INFLUXDB_INIT_USERNAME: sentio
-      DOCKER_INFLUXDB_INIT_PASSWORD: sentio-password
-      DOCKER_INFLUXDB_INIT_ORG: sentio
-      DOCKER_INFLUXDB_INIT_BUCKET: air_quality
-      DOCKER_INFLUXDB_INIT_ADMIN_TOKEN: sentio-dev-token
+      DOCKER_INFLUXDB_INIT_USERNAME: ${INFLUX_USERNAME:?set INFLUX_USERNAME in .env}
+      DOCKER_INFLUXDB_INIT_PASSWORD: ${INFLUX_PASSWORD:?set INFLUX_PASSWORD in .env}
+      DOCKER_INFLUXDB_INIT_ORG: ${INFLUX_ORG:?set INFLUX_ORG in .env}
+      DOCKER_INFLUXDB_INIT_BUCKET: ${INFLUX_BUCKET:?set INFLUX_BUCKET in .env}
+      DOCKER_INFLUXDB_INIT_ADMIN_TOKEN: ${INFLUX_TOKEN:?set INFLUX_TOKEN in .env}
     volumes:
       - influxdb_data:/var/lib/influxdb2
 
   backend:
     build: ./services/backend
+    restart: unless-stopped
     ports:
       - "8000:8000"
     environment:
       MQTT_HOST: mosquitto
       MQTT_PORT: "1883"
       MQTT_TOPIC: sentio/devices/+/telemetry
+      MQTT_USERNAME: ${MQTT_USERNAME:?set MQTT_USERNAME in .env}
+      MQTT_PASSWORD: ${MQTT_PASSWORD:?set MQTT_PASSWORD in .env}
       INFLUX_URL: http://influxdb:8086
-      INFLUX_TOKEN: sentio-dev-token
-      INFLUX_ORG: sentio
-      INFLUX_BUCKET: air_quality
+      INFLUX_TOKEN: ${INFLUX_TOKEN:?set INFLUX_TOKEN in .env}
+      INFLUX_ORG: ${INFLUX_ORG:?set INFLUX_ORG in .env}
+      INFLUX_BUCKET: ${INFLUX_BUCKET:?set INFLUX_BUCKET in .env}
     depends_on:
       - mosquitto
       - influxdb
-
-  simulator:
-    build: ./services/simulator
-    environment:
-      MQTT_HOST: mosquitto
-      MQTT_PORT: "1883"
-      MQTT_TOPIC_PREFIX: sentio/devices
-      SIM_INTERVAL_SECONDS: "3"
-    depends_on:
-      - mosquitto
 
 volumes:
   influxdb_data:
   mosquitto_data:
   mosquitto_log:
-

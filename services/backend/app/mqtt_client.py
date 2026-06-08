@@ -31,9 +31,10 @@ def on_message(_client: mqtt.Client, _userdata, message: mqtt.MQTTMessage):
 
 def start_mqtt_listener() -> mqtt.Client:
     client = mqtt.Client(mqtt.CallbackAPIVersion.VERSION2)
+    if settings.mqtt_username and settings.mqtt_password:
+        client.username_pw_set(settings.mqtt_username, settings.mqtt_password)
     client.on_connect = on_connect
     client.on_message = on_message
     client.connect(settings.mqtt_host, settings.mqtt_port, keepalive=60)
     client.loop_start()
     return client
-

@@ -3,3 +3,4 @@ __pycache__/
 *.pyc
 sentio_mvp.sqlite3
 .env
+SentioFirmwareConfig.h

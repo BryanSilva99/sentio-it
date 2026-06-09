@@ -85,6 +85,14 @@ GET /api/summary
 
 El ESP32 debe conectarse al broker MQTT usando la IP o dominio del servidor, el usuario y la clave definidos en `.env`.
 
+El firmware incluido en `SentioFirmwareSimulado.ino` no guarda secretos en Git. Antes de compilarlo en Arduino IDE, crea tu archivo local:
+
+```bash
+cp SentioFirmwareConfig.h.example SentioFirmwareConfig.h
+```
+
+Luego edita `SentioFirmwareConfig.h` con tu WiFi y la clave MQTT real. Ese archivo esta ignorado por Git.
+
 Ejemplo:
 
 ```cpp

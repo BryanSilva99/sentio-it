@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import json
+import os
 import socket
 import sqlite3
 import threading
@@ -13,8 +14,30 @@ from urllib.parse import parse_qs, urlparse
 ROOT = Path(__file__).parent
 DB_PATH = ROOT / "sentio_mvp.sqlite3"
 STATIC_DIR = ROOT / "services" / "backend" / "app" / "static"
-HTTP_PORT = 8000
-MQTT_PORT = 1883
+HTTP_PORT = int(os.getenv("HTTP_PORT", "8000"))
+MQTT_PORT = int(os.getenv("MQTT_PORT", "1884"))
+MQTT_USERNAME = os.getenv("MQTT_USERNAME", "")
+MQTT_PASSWORD = os.getenv("MQTT_PASSWORD", "")
+
+OPTIONAL_COLUMNS = {
+    "rain_analog": "INTEGER",
+    "rain_percent": "REAL",
+    "rain_status": "TEXT",
+    "wifi_rssi": "INTEGER",
+    "uptime_ms": "INTEGER",
+    "sensor_status": "TEXT",
+    "firmware_version": "TEXT",
+    "data_mode": "TEXT",
+    "alert_level": "TEXT",
+    "alert_message": "TEXT",
+    "temperature_source": "TEXT",
+    "humidity_source": "TEXT",
+    "rain_source": "TEXT",
+    "pm25_source": "TEXT",
+    "pm10_source": "TEXT",
+    "co_source": "TEXT",
+    "no2_source": "TEXT",
+}
 
 
 def classify_pm25(pm25: float) -> dict[str, str | int]:
@@ -45,10 +68,48 @@ def init_db() -> None:
                 co REAL NOT NULL,
                 no2 REAL NOT NULL,
                 temperature REAL NOT NULL,
-                humidity REAL NOT NULL
+                humidity REAL NOT NULL,
+                rain_analog INTEGER,
+                rain_percent REAL,
+                rain_status TEXT,
+                wifi_rssi INTEGER,
+                uptime_ms INTEGER,
+                sensor_status TEXT,
+                firmware_version TEXT,
+                data_mode TEXT,
+                alert_level TEXT,
+                alert_message TEXT,
+                temperature_source TEXT,
+                humidity_source TEXT,
+                rain_source TEXT,
+                pm25_source TEXT,
+                pm10_source TEXT,
+                co_source TEXT,
+                no2_source TEXT
             )
             """
         )
+        existing_columns = {
+            row[1] for row in conn.execute("PRAGMA table_info(readings)").fetchall()
+        }
+        for column, column_type in OPTIONAL_COLUMNS.items():
+            if column not in existing_columns:
+                conn.execute(f"ALTER TABLE readings ADD COLUMN {column} {column_type}")
+
+
+def optional_int(payload: dict, key: str) -> int | None:
+    value = payload.get(key)
+    return None if value is None else int(value)
+
+
+def optional_float(payload: dict, key: str) -> float | None:
+    value = payload.get(key)
+    return None if value is None else float(value)
+
+
+def optional_str(payload: dict, key: str) -> str | None:
+    value = payload.get(key)
+    return None if value is None else str(value)
 
 
 def validate_payload(payload: dict) -> dict:
@@ -67,6 +128,23 @@ def validate_payload(payload: dict) -> dict:
         "no2": float(payload["no2"]),
         "temperature": float(payload["temperature"]),
         "humidity": float(payload["humidity"]),
+        "rain_analog": optional_int(payload, "rain_analog"),
+        "rain_percent": optional_float(payload, "rain_percent"),
+        "rain_status": optional_str(payload, "rain_status"),
+        "wifi_rssi": optional_int(payload, "wifi_rssi"),
+        "uptime_ms": optional_int(payload, "uptime_ms"),
+        "sensor_status": optional_str(payload, "sensor_status"),
+        "firmware_version": optional_str(payload, "firmware_version"),
+        "data_mode": optional_str(payload, "data_mode"),
+        "alert_level": optional_str(payload, "alert_level"),
+        "alert_message": optional_str(payload, "alert_message"),
+        "temperature_source": optional_str(payload, "temperature_source"),
+        "humidity_source": optional_str(payload, "humidity_source"),
+        "rain_source": optional_str(payload, "rain_source"),
+        "pm25_source": optional_str(payload, "pm25_source"),
+        "pm10_source": optional_str(payload, "pm10_source"),
+        "co_source": optional_str(payload, "co_source"),
+        "no2_source": optional_str(payload, "no2_source"),
     }
 
 
@@ -76,9 +154,12 @@ def save_reading(reading: dict) -> None:
         conn.execute(
             """
             INSERT INTO readings (
-                device_id, timestamp, district, lat, lng, pm25, pm10, co, no2, temperature, humidity
+                device_id, timestamp, district, lat, lng, pm25, pm10, co, no2, temperature, humidity,
+                rain_analog, rain_percent, rain_status, wifi_rssi, uptime_ms, sensor_status,
+                firmware_version, data_mode, alert_level, alert_message, temperature_source,
+                humidity_source, rain_source, pm25_source, pm10_source, co_source, no2_source
             )
-            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
             """,
             (
                 reading["device_id"],
@@ -92,6 +173,23 @@ def save_reading(reading: dict) -> None:
                 reading["no2"],
                 reading["temperature"],
                 reading["humidity"],
+                reading["rain_analog"],
+                reading["rain_percent"],
+                reading["rain_status"],
+                reading["wifi_rssi"],
+                reading["uptime_ms"],
+                reading["sensor_status"],
+                reading["firmware_version"],
+                reading["data_mode"],
+                reading["alert_level"],
+                reading["alert_message"],
+                reading["temperature_source"],
+                reading["humidity_source"],
+                reading["rain_source"],
+                reading["pm25_source"],
+                reading["pm10_source"],
+                reading["co_source"],
+                reading["no2_source"],
             ),
         )
 
@@ -112,6 +210,8 @@ def row_to_payload(row: sqlite3.Row) -> dict:
         "temperature": row["temperature"],
         "humidity": row["humidity"],
     }
+    for column in OPTIONAL_COLUMNS:
+        item[column] = row[column]
     item["air_quality"] = classify_pm25(item["pm25"])
     item["recommendation"] = "Lectura recibida por MQTT desde un nodo Sentio."
     return item
@@ -176,6 +276,40 @@ def decode_utf8_field(data: bytes, offset: int) -> tuple[str, int]:
     return data[offset : offset + size].decode("utf-8"), offset + size
 
 
+def handle_connect(body: bytes) -> bool:
+    protocol_name, offset = decode_utf8_field(body, 0)
+    if protocol_name not in {"MQTT", "MQIsdp"}:
+        return False
+
+    protocol_level = body[offset]
+    offset += 1
+    connect_flags = body[offset]
+    offset += 1
+    offset += 2  # keepalive
+
+    if protocol_level == 5:
+        properties_length = body[offset]
+        offset += 1 + properties_length
+
+    _, offset = decode_utf8_field(body, offset)  # client id
+
+    will_flag = bool(connect_flags & 0x04)
+    if will_flag:
+        _, offset = decode_utf8_field(body, offset)
+        _, offset = decode_utf8_field(body, offset)
+
+    username = ""
+    password = ""
+    if connect_flags & 0x80:
+        username, offset = decode_utf8_field(body, offset)
+    if connect_flags & 0x40:
+        password, offset = decode_utf8_field(body, offset)
+
+    if not MQTT_USERNAME and not MQTT_PASSWORD:
+        return True
+    return username == MQTT_USERNAME and password == MQTT_PASSWORD
+
+
 def handle_publish(packet_type_flags: int, body: bytes) -> None:
     topic, offset = decode_utf8_field(body, 0)
     qos = (packet_type_flags >> 1) & 0x03
@@ -196,6 +330,7 @@ def handle_mqtt_client(conn: socket.socket, address) -> None:
     with conn:
         print(f"MQTT cliente conectado {address[0]}:{address[1]}")
         conn.settimeout(30)
+        authenticated = False
         while True:
             fixed_header = conn.recv(1)
             if not fixed_header:
@@ -209,8 +344,14 @@ def handle_mqtt_client(conn: socket.socket, address) -> None:
             body = read_exact(conn, remaining_length)
 
             if packet_type == 1:
+                authenticated = handle_connect(body)
+                if not authenticated:
+                    conn.sendall(b"\x20\x02\x00\x04")
+                    return
                 conn.sendall(b"\x20\x02\x00\x00")
             elif packet_type == 3:
+                if not authenticated:
+                    return
                 handle_publish(packet_type_flags, body)
             elif packet_type == 12:
                 conn.sendall(b"\xD0\x00")

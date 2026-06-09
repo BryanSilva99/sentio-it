@@ -11,7 +11,7 @@ sentio-lima-esp32-001
 ## Arquitectura de servidor
 
 ```text
-ESP32 -> Mosquitto MQTT :1883 -> FastAPI backend -> InfluxDB -> Dashboard/API :8000
+ESP32 -> Mosquitto MQTT publico :1884 -> FastAPI backend -> InfluxDB -> Dashboard/API :8000
 ```
 
 Componentes principales:
@@ -26,7 +26,7 @@ El proyecto ya no incluye simuladores ni publicadores de datos de prueba en la r
 ## Requisitos
 
 - Servidor Linux con Docker Engine y Docker Compose.
-- Puerto `1883/tcp` accesible desde el ESP32.
+- Puerto `1884/tcp` accesible desde el ESP32.
 - Puerto `8000/tcp` accesible para el dashboard o para Nginx.
 - Red y firewall configurados para que la placa pueda llegar al servidor.
 
@@ -92,7 +92,7 @@ const char* WIFI_SSID = "TU_WIFI";
 const char* WIFI_PASSWORD = "TU_CLAVE_WIFI";
 
 const char* MQTT_HOST = "IP_DEL_SERVIDOR";
-const int MQTT_PORT = 1883;
+const int MQTT_PORT = 1884;
 const char* MQTT_USERNAME = "sentio_device";
 const char* MQTT_PASSWORD = "CLAVE_REAL_MQTT";
 const char* DEVICE_ID = "sentio-lima-esp32-001";
@@ -120,7 +120,24 @@ Payload esperado:
   "co": 0.483,
   "no2": 0.076,
   "temperature": 25.48,
-  "humidity": 82.42
+  "humidity": 82.42,
+  "rain_analog": 2800,
+  "rain_percent": 31.62,
+  "rain_status": "moist",
+  "wifi_rssi": -61,
+  "uptime_ms": 123456,
+  "sensor_status": "ok",
+  "firmware_version": "0.2.2",
+  "data_mode": "partial_real",
+  "alert_level": "warning",
+  "alert_message": "Humedad alta",
+  "temperature_source": "DHT11",
+  "humidity_source": "DHT11",
+  "rain_source": "HW-028_AO",
+  "pm25_source": "simulated",
+  "pm10_source": "simulated",
+  "co_source": "simulated",
+  "no2_source": "simulated"
 }
 ```
 
@@ -129,7 +146,7 @@ Payload esperado:
 En Ubuntu con `ufw`, permitir MQTT desde la LAN:
 
 ```bash
-sudo ufw allow from 192.168.18.0/24 to any port 1883 proto tcp
+sudo ufw allow from 192.168.18.0/24 to any port 1884 proto tcp
 sudo ufw reload
 ```
 

@@ -4,9 +4,12 @@ services:
     restart: unless-stopped
     command: >
       sh -c 'mosquitto_passwd -b -c /tmp/password_file "$$MQTT_USERNAME" "$$MQTT_PASSWORD"
+      && chown mosquitto:mosquitto /tmp/password_file
+      && chmod 0700 /tmp/password_file
       && mosquitto -c /mosquitto/config/mosquitto.conf'
     ports:
       - "1883:1883"
+      - "1884:1883"
     environment:
       MQTT_USERNAME: ${MQTT_USERNAME:?set MQTT_USERNAME in .env}
       MQTT_PASSWORD: ${MQTT_PASSWORD:?set MQTT_PASSWORD in .env}

@@ -13,6 +13,18 @@ from .models import Telemetry
 from .settings import settings
 
 
+def add_optional_field(point: Point, name: str, value: Any) -> Point:
+    if value is not None:
+        point = point.field(name, value)
+    return point
+
+
+def add_optional_tag(point: Point, name: str, value: str | None) -> Point:
+    if value:
+        point = point.tag(name, value)
+    return point
+
+
 class AirQualityStore:
     def __init__(self) -> None:
         self._lock = Lock()
@@ -42,6 +54,31 @@ class AirQualityStore:
             .field("humidity", telemetry.humidity)
             .time(telemetry.timestamp)
         )
+        for field_name in (
+            "rain_analog",
+            "rain_percent",
+            "wifi_rssi",
+            "uptime_ms",
+            "alert_message",
+        ):
+            point = add_optional_field(point, field_name, getattr(telemetry, field_name))
+
+        for tag_name in (
+            "rain_status",
+            "sensor_status",
+            "firmware_version",
+            "data_mode",
+            "alert_level",
+            "temperature_source",
+            "humidity_source",
+            "rain_source",
+            "pm25_source",
+            "pm10_source",
+            "co_source",
+            "no2_source",
+        ):
+            point = add_optional_tag(point, tag_name, getattr(telemetry, tag_name))
+
         self._write_api.write(bucket=settings.influx_bucket, org=settings.influx_org, record=point)
 
         with self._lock:
